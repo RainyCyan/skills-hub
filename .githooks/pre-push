@@ -1,0 +1,19 @@
+#!/bin/sh
+# 禁止直接 push 到受保护分支。所有改动请推 feature 分支并发起 Pull Request。
+# 这是本地辅助拦截；服务端 GitHub Ruleset 才是强制层。
+
+protected="refs/heads/main"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+	if [ "$remote_ref" = "$protected" ]; then
+		echo "" >&2
+		echo "✗ 禁止直接 push 到 main。" >&2
+		echo "  请推送到 feature 分支并通过 Pull Request 合入：" >&2
+		echo "    git switch -c <your-name>/feat/<topic>" >&2
+		echo "    git push -u origin HEAD" >&2
+		echo "" >&2
+		exit 1
+	fi
+done
+
+exit 0
