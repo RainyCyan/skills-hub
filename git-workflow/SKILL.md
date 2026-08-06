@@ -49,17 +49,13 @@ git worktree list
 
 ### 清理 worktree
 
-Before removing a worktree, verify ALL five conditions:
+Before removing a worktree, run the cleanup safety check:
 
 ```bash
-git status --short                              # clean
-git branch -vv                                  # 无 unpushed commits
-git worktree list                               # 无人在用
-gh pr list --state open --head <branch-name>    # 无 open PR
-git log --oneline origin/main..<branch-name>    # 有价值 commits 已 push/merge
+bash scripts/check_worktree_cleanup.sh <branch-name> [worktree-path]
 ```
 
-Only then:
+This verifies all five conditions: clean status, no unpushed commits, no active worktree, no open PR, all commits merged. Only proceed if all pass.
 
 ```bash
 git worktree remove ../<task-name>
@@ -102,12 +98,13 @@ If staged files include paths outside the task's scope — STOP. Do not commit. 
 
 ## PR 前检查
 
+Run the PR readiness check:
+
 ```bash
-git fetch origin --prune
-git log --oneline origin/main..HEAD
-git diff --name-only origin/main...HEAD
-git diff --check
+bash scripts/check_pr_ready.sh
 ```
+
+This runs fetch, status check, commit log, file diff, and `git diff --check` in one pass.
 
 PR 必须小到一个人类 reviewer 能读完。每个 PR 必须包含：
 
