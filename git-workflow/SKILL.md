@@ -12,16 +12,48 @@ description: 管理 git 仓库的并发安全与工作区隔离。触发场景�
 3. **线性历史。** main 只接受 fast-forward。禁止 merge commit 出现在 main 上。
 4. **破坏性命令必须慢动作。** Never force push、hard reset、stash 他人的工作。
 
+## 环境闸门
+
+Before any command that writes shared git metadata, run:
+
+```bash
+bash scripts/check_git_runtime.sh
+```
+
+把下面这些都视为“会写共享 `.git` 元数据”的命令：
+
+- `git fetch`
+- `git worktree add`
+- `git add`
+- `git commit`
+- `git rebase`
+- `git merge`
+- `git branch -f`
+
+If `check_git_runtime.sh` fails, STOP. Do not continue diagnosing branch state, remote state, or merge conflicts first.
+
+在 CloudIDE / sandbox 环境里，worktree 失败经常不是 git 工作流设计错误，而是 `.git` 写入被拦截：
+
+- `git fetch` 失败在 `.git/FETCH_HEAD`
+- `git worktree add` 失败在 `.git/worktrees/...`
+- `git add` / `git commit` 失败在 `.git/index.lock`
+- `git rebase` 失败在 `.git/rebase-merge`
+
+这种情况下的正确动作不是改 branch，也不是重试更多 git 命令，而是切换到允许写 `.git` 的执行路径后再继续。
+
 ## Worktree 工作流
 
 ### 创建 worktree
 
-Always create a worktree from origin/main before starting any task:
+Always verify the git runtime first, then create a worktree from `origin/main`:
 
 ```bash
+bash scripts/check_git_runtime.sh
 git fetch origin --prune
 git worktree add ../<task-name> -b <branch-name> origin/main
 ```
+
+If the runtime blocks `.git` writes, `git worktree add` cannot succeed even when the worktree directory itself is writable.
 
 分支命名规范（携带来源和 scope）：
 
@@ -81,10 +113,13 @@ Before starting work, define the task boundary in writing:
 ## 编辑前检查
 
 ```bash
+bash scripts/check_git_runtime.sh
 git fetch origin --prune
 git status --short --branch    # 必须 clean
 git diff --stat
 ```
+
+如果 `git fetch` 报 `Read-only file system`，优先判断 `.git` 写入路径，而不是把它当成远程状态异常。
 
 ## Commit 前检查
 
@@ -104,7 +139,7 @@ Run the PR readiness check:
 bash scripts/check_pr_ready.sh
 ```
 
-This runs fetch, status check, commit log, file diff, and `git diff --check` in one pass.
+This now runs git-runtime validation before fetch, then status check, commit log, file diff, and `git diff --check`.
 
 PR 必须小到一个人类 reviewer 能读完。每个 PR 必须包含：
 
@@ -129,6 +164,7 @@ AI-assisted PR 额外说明：哪个 agent/tool 写的、branch owner 是谁、�
 同步 main 之前先诊断：
 
 ```bash
+bash scripts/check_git_runtime.sh
 git fetch origin --prune
 git status --short --branch
 git rev-list --left-right --count main...origin/main
@@ -144,6 +180,7 @@ git config pull.ff only
 工作分支 rebase 到 main：
 
 ```bash
+bash scripts/check_git_runtime.sh
 git fetch origin
 git rebase origin/main
 ```
@@ -182,6 +219,7 @@ git merge --no-ff <branch> && <test-command>
 ## 注意事项
 
 - Worktree 共享 `.git` 对象库，但每个 worktree 的 `.git` 实际是指向主仓库的引用，不是独立拷贝
+- 因为 worktree 共享 `.git`，只要共享 `.git` 不可写，worktree 隔离就无法真正启动；目录可写并不等于 worktree 可用
 - 不隔离外部状态：数据库、Docker 容器、Redis 缓存是所有 worktree 共享的
 - 每个 worktree 需要独立的端口配置（`.env.local` 中设置不同的 PORT）
 - 磁盘空间：worktree 只复制 checkout 文件，不复制 `.git` 历史，空间开销远小于 clone

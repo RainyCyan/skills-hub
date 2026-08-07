@@ -6,6 +6,7 @@ set -euo pipefail
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PASS=0
 FAIL=0
@@ -24,10 +25,29 @@ check() {
 echo "=== PR 提交前检查 ==="
 echo ""
 
+# 0. 运行环境检查
+echo "0. 当前 git 运行环境是否允许写共享元数据?"
+if bash "$SCRIPT_DIR/check_git_runtime.sh"; then
+    check "git 元数据写入路径可用" 0
+else
+    check "git 元数据写入路径可用" 1
+    echo ""
+    echo -e "${RED}环境检查失败，停止后续 PR 检查。${NC}"
+    echo "原因: 后续 fetch / diff / branch 诊断可能被 .git 写入失败污染。"
+    exit 1
+fi
+
 # 1. Fetch latest
+echo ""
 echo "1. 同步远程仓库..."
-git fetch origin --prune
-check "git fetch origin --prune" 0
+if git fetch origin --prune; then
+    check "git fetch origin --prune" 0
+else
+    check "git fetch origin --prune" 1
+    echo ""
+    echo -e "${RED}远程同步失败，停止后续 PR 检查。${NC}"
+    exit 1
+fi
 
 # 2. 当前分支
 BRANCH=$(git branch --show-current)

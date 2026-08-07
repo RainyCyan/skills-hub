@@ -5,6 +5,7 @@ set -euo pipefail
 
 BRANCH="${1:-}"
 WORKTREE_PATH="${2:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ -z "$BRANCH" ]; then
     echo "用法: $0 <branch-name> [worktree-path]"
@@ -38,7 +39,20 @@ fi
 echo "=== 检查 worktree 清理条件: $BRANCH ==="
 echo ""
 
+# 0. 运行环境检查
+echo "0. 当前 git 运行环境是否允许写共享元数据?"
+if bash "$SCRIPT_DIR/check_git_runtime.sh"; then
+    check "git 元数据写入路径可用" 0
+else
+    check "git 元数据写入路径可用" 1
+    echo ""
+    echo -e "${RED}环境检查失败，停止后续 worktree 清理检查。${NC}"
+    echo "原因: worktree list / fetch / branch 状态都可能被 .git 写入失败污染。"
+    exit 1
+fi
+
 # 1. git status 必须 clean
+echo ""
 echo "1. 工作区是否 clean?"
 STATUS_OUT=$(git status --short 2>&1) || true
 if [ -z "$STATUS_OUT" ]; then
@@ -98,7 +112,15 @@ fi
 # 5. 有价值的 commits 已 push/merge
 echo ""
 echo "5. 是否有未合并的 commits?"
-git fetch origin --prune 2>/dev/null || true
+if git fetch origin --prune; then
+    :
+else
+    echo "    git fetch origin --prune 失败，无法判断 merge 状态"
+    check "git fetch origin --prune 成功" 1
+    echo ""
+    echo -e "${RED}远程同步失败，停止 worktree 清理检查。${NC}"
+    exit 1
+fi
 COMMITS=$(git log --oneline origin/main.."$BRANCH" 2>&1) || true
 if [ -z "$COMMITS" ]; then
     check "origin/main..$BRANCH 无 commits（已合并或已推送）" 0
