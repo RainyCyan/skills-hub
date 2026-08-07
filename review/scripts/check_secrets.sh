@@ -1,70 +1,95 @@
 #!/usr/bin/env bash
-# 扫描 diff 中的硬编码密钥和敏感信息
-# 用法: bash check_secrets.sh [diff-target]
-# 默认对比 origin/main...HEAD
 set -euo pipefail
 
-TARGET="${1:-origin/main...HEAD}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+DIFF_FILE="$(mktemp)"
+trap 'rm -f "$DIFF_FILE"' EXIT
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+if ! "$SCRIPT_DIR/collect_diff.sh" "$@" >"$DIFF_FILE"; then
+    echo "error: unable to collect the review diff" >&2
+    exit 2
+fi
 
-echo "=== 硬编码密钥扫描 ==="
-echo "对比范围: $TARGET"
-echo ""
-
-# 获取 diff
-DIFF=$(git diff "$TARGET" 2>&1) || true
-if [ -z "$DIFF" ]; then
-    echo -e "${GREEN}无 diff，跳过扫描。${NC}"
+if [ ! -s "$DIFF_FILE" ]; then
+    echo "PASS secrets: no changes to scan"
     exit 0
 fi
 
-FOUND=0
-
-# 模式列表: 正则 -> 描述
-declare -A PATTERNS=(
-    ['password\s*[=:]\s*["\x27][^"\x27]{3,}']="硬编码密码"
-    ['passwd\s*[=:]\s*["\x27][^"\x27]{3,}']="硬编码密码(passwd)"
-    ['api[_]?key\s*[=:]\s*["\x27][^"\x27]{8,}']="硬编码 API Key"
-    ['secret\s*[=:]\s*["\x27][^"\x27]{8,}']="硬编码 Secret"
-    ['token\s*[=:]\s*["\x27][^"\x27]{8,}']="硬编码 Token"
-    ['private[_]?key\s*[=:]\s*["\x27]']="硬编码私钥"
-    ['-----BEGIN (RSA|EC|DSA|OPENSSH)?\s*PRIVATE KEY-----']="PEM 私钥"
-    ['Authorization:\s*(Basic|Bearer)\s+["\x27]?[A-Za-z0-9+/=]{20,}']="硬编码认证头"
-    ['AKIA[0-9A-Z]{16}']="AWS Access Key"
-    ['sk-[A-Za-z0-9]{32,}']="OpenAI API Key"
-    ['ghp_[A-Za-z0-9]{36}']="GitHub Personal Access Token"
-    ['gho_[A-Za-z0-9]{36}']="GitHub OAuth Token"
-    ['xox[bpras]-[A-Za-z0-9-]{10,}']="Slack Token"
+PATTERNS=(
+    "password[[:space:]]*[=:][[:space:]]*['\"][^'\"]{3,}"
+    "passwd[[:space:]]*[=:][[:space:]]*['\"][^'\"]{3,}"
+    "api[_-]?key[[:space:]]*[=:][[:space:]]*['\"][^'\"]{8,}"
+    "secret[[:space:]]*[=:][[:space:]]*['\"][^'\"]{8,}"
+    "token[[:space:]]*[=:][[:space:]]*['\"][^'\"]{8,}"
+    "private[_-]?key[[:space:]]*[=:][[:space:]]*['\"]"
+    "-----BEGIN ([A-Z0-9]+ )?PRIVATE KEY-----"
+    "Authorization:[[:space:]]*(Basic|Bearer)[[:space:]]+['\"]?[A-Za-z0-9._+/=-]{20,}"
+    "AKIA[0-9A-Z]{16}"
+    "sk-[A-Za-z0-9_-]{32,}"
+    "gh[oprsu]_[A-Za-z0-9]{36,}"
+    "xox[bpras]-[A-Za-z0-9-]{10,}"
 )
 
-# 逐行检查 diff 中新增的行（以 + 开头）
-while IFS= read -r line; do
-    # 只检查新增行
-    if [[ "$line" =~ ^\+[^+] ]]; then
-        content="${line:1}"
-        for pattern in "${!PATTERNS[@]}"; do
-            if echo "$content" | grep -qiE "$pattern" 2>/dev/null; then
-                # 排除明显是注释或测试占位符的行
-                if echo "$content" | grep -qiE '(your-api-key|test_key|example|placeholder|xxxx|changeme|todo)' 2>/dev/null; then
-                    continue
-                fi
-                echo -e "${RED}[阻塞]${NC} ${PATTERNS[$pattern]}: ${content:0:120}"
-                FOUND=$((FOUND + 1))
-                break
-            fi
-        done
-    fi
-done <<< "$DIFF"
+LABELS=(
+    "hard-coded password"
+    "hard-coded password"
+    "hard-coded API key"
+    "hard-coded secret"
+    "hard-coded token"
+    "hard-coded private key"
+    "PEM private key"
+    "hard-coded authorization header"
+    "AWS access key"
+    "OpenAI-style API key"
+    "GitHub token"
+    "Slack token"
+)
 
-echo ""
-if [ "$FOUND" -eq 0 ]; then
-    echo -e "${GREEN}未发现硬编码密钥。${NC}"
-    exit 0
-else
-    echo -e "${RED}发现 $FOUND 处疑似硬编码密钥，请修复。${NC}"
+current_file=""
+new_line=0
+found=0
+
+while IFS= read -r line; do
+    case "$line" in
+        "+++ b/"*)
+            current_file="${line#+++ b/}"
+            ;;
+        "@@ "*)
+            hunk="${line#*+}"
+            new_line="${hunk%%[, ]*}"
+            ;;
+        "+"*)
+            if [[ "$line" == "+++"* ]] || [ -z "$current_file" ]; then
+                continue
+            fi
+            content="${line:1}"
+            if grep -qiE -- '(your[-_]?api[-_]?key|test[-_]?key|placeholder|replace[-_]?me|changeme|<[^>]+>)' <<<"$content"; then
+                new_line=$((new_line + 1))
+                continue
+            fi
+            for index in "${!PATTERNS[@]}"; do
+                if grep -qiE -- "${PATTERNS[$index]}" <<<"$content"; then
+                    printf 'CANDIDATE secrets %s:%s %s\n' \
+                        "$current_file" "$new_line" "${LABELS[$index]}"
+                    found=$((found + 1))
+                    break
+                fi
+            done
+            new_line=$((new_line + 1))
+            ;;
+        "-"*)
+            ;;
+        *)
+            if [ "$new_line" -gt 0 ]; then
+                new_line=$((new_line + 1))
+            fi
+            ;;
+    esac
+done <"$DIFF_FILE"
+
+if [ "$found" -gt 0 ]; then
+    echo "FOUND secrets: $found candidate(s); inspect values without reproducing them"
     exit 1
 fi
+
+echo "PASS secrets: no candidates found"

@@ -1,136 +1,109 @@
 ---
 name: review
-description: 代码审查与质量门编排。触发场景：/review 命令、提交前审查、PR review、代码质量检查、安全检查。执行静态审查（安全漏洞、逻辑错误、AGENTS.md 合规、调试代码）+ 调用 test skill 动态验证，输出结构化审查结论。
+description: 编排基于变更证据的代码审查质量门，检查正确性、安全性、回归风险和仓库约束，并委托可用的 test skill 做动态验证。用于用户请求 /review、review diff/PR/commit、提交或合入前检查、代码质量门、安全审查，或询问变更是否可提交/合入时；不用于直接修复代码。
 ---
 
 # Review
 
-Review 是质量门编排者。入口 `/review`，执行三步流程：
+将本 skill 作为只读质量门编排器：确定范围、收集证据、运行廉价扫描、审查行为变化、委托动态验证并给出判定。Never modify reviewed files or implement fixes unless the user separately asks for remediation.
 
-1. **静态审查**：检查代码 diff 的安全性、正确性、合规性
-2. **动态验证**：调用 test skill 运行相关测试
-3. **输出结论**：结构化问题列表 + 最终判定
+## 1. Freeze The Scope
 
-## 输出格式
+Before reviewing:
 
-Always output in this exact structure:
+- Read every applicable `AGENTS.md` for the changed files.
+- Use the user-specified commit, branch, PR, staged set, or path scope when provided.
+- Otherwise review the current worktree against `HEAD`, including staged、unstaged 和 untracked 文件。
+- Use `scripts/collect_diff.sh` for the default scope. Use `--staged` for staged-only review, repeat `--path <path>` for path scopes, and pass `--target <git-diff-target>` only when the user supplied or the repository clearly defines that target.
+- Never assume the base branch is `main`, `master`, or that `origin` exists.
+- Stop with `信息不足` if the target cannot be resolved or the diff cannot be collected. Never reinterpret a tool error as an empty diff.
+- If the collected diff is empty, return `无变更` and do not claim the codebase passed review.
 
-```
-## 审查结论
+Inspect complete changed files and their callers, tests, schemas, configuration, and error paths when the diff alone cannot establish behavior. Review only regressions introduced by the selected scope; do not report unrelated pre-existing defects.
 
-**判定**: [可以提交 / 需要修复]
-**阻塞项**: N 个 | **警告项**: N 个 | **建议项**: N 个
+## 2. Run Candidate Scanners
 
----
-
-### 阻塞项 (必须修复)
-
-| 文件:行号 | 问题 | 严重程度 |
-|-----------|------|----------|
-| src/auth.ts:42 | SQL 注入：用户输入直接拼入查询字符串 | 阻塞 |
-
-### 警告项 (应该修复)
-
-| 文件:行号 | 问题 | 严重程度 |
-|-----------|------|----------|
-| src/utils.ts:15 | console.log 调试代码未清理 | 警告 |
-
-### 建议项 (可选改进)
-
-| 文件:行号 | 问题 | 严重程度 |
-|-----------|------|----------|
-| src/api.ts:88 | 错误消息暴露内部路径 | 建议 |
-
----
-
-### 动态验证
-
-[test skill 执行结果摘要]
-```
-
-## 严重程度定义
-
-- **阻塞**：安全漏洞、会导致运行时崩溃、数据损坏、违反 AGENTS.md 硬约束。必须修复才能提交。
-- **警告**：潜在 bug、未清理的调试代码、资源泄漏、不符合仓库约定。应该修复。
-- **建议**：可读性、可维护性改进。不阻塞提交。
-
-## 静态审查清单
-
-### 安全审查（阻塞项）
-
-按优先级检查，命中任一项即为阻塞：
-
-1. **命令注入**：`exec()`、`spawn()`、`system()`、`eval()` 的参数包含用户输入或外部数据
-2. **SQL 注入**：字符串拼接构造 SQL，未使用参数化查询
-3. **XSS**：`innerHTML`、`dangerouslySetInnerHTML`、未转义的用户输入直接渲染到 HTML
-4. **路径遍历**：文件路径由用户输入拼接，未做规范化和边界检查
-5. **硬编码密钥**：代码中的 API key、token、password、private key 等明文凭证
-6. **不安全的反序列化**：`pickle.loads`、`yaml.load`（非 safe_load）、`JSON.parse` 后无校验
-7. **认证绕过**：中间件遗漏、权限检查可被跳过、token 验证不完整
-8. **敏感数据泄露**：日志中打印密码/令牌、错误消息暴露内部路径或堆栈信息
-
-详细规则见 `references/security_checklist.md`。
-
-#### 自动化安全扫描
-
-Before manual review, run the deterministic scanners:
+Keep the working directory at the reviewed repository and invoke both bundled scripts by their skill-directory path with the same scope:
 
 ```bash
-bash scripts/check_secrets.sh          # 硬编码密钥扫描
-bash scripts/check_debug_code.sh       # 调试代码残留扫描
+scripts/check_secrets.sh [--target <git-diff-target> | --staged] [--path <path> ...]
+scripts/check_debug_code.sh [--target <git-diff-target> | --staged] [--path <path> ...]
 ```
 
-- `check_secrets.sh` 返回非零退出码表示发现阻塞项，必须修复
-- `check_debug_code.sh` 返回零退出码，所有发现为警告级别
+Interpret exit codes consistently:
 
-### 逻辑审查（阻塞项或警告项）
+- `0`: no candidate found.
+- `1`: candidate found; manually verify it before reporting.
+- `2+`: scanner or diff collection failed; final verdict cannot be `可以提交`.
 
-- 空指针/undefined 访问：在可选链或类型守卫缺失的情况下直接访问属性
-- 资源未释放：打开的文件句柄、数据库连接、网络连接未在 finally 中关闭
-- 竞态条件：异步操作中共享可变状态，未加锁或未使用原子操作
-- 无限循环风险：while 循环缺少明确的退出条件或边界检查
+Scanner output is triage evidence, not a finding. Never expose a matched credential value in the report.
 
-### 仓库合规审查（警告项）
+## 3. Review Changed Behavior
 
-- 是否违反 AGENTS.md 中的硬约束
-- 是否修改了 out-of-scope 文件（参考 git-workflow 的任务分配契约）
-- 是否包含未清理的调试代码：`console.log`、`debugger`、`print(`、`TODO`、`FIXME`、注释掉的代码块
-- 是否引入了不应提交的文件（`.env`、`node_modules`、构建产物）
+Prioritize findings in this order:
 
-### 不要审查的内容
+1. **Correctness and data integrity**: changed behavior contradicts requirements, callers, schemas, lifecycle rules, error semantics, or persisted-state invariants.
+2. **Security boundaries**: changed data flow crosses trust, authorization, execution, file, serialization, logging, or response boundaries without adequate enforcement. Load `references/security_checklist.md` only for these changes.
+3. **Regression and operability**: changed failure paths, compatibility, concurrency, resource ownership, rollout configuration, or observability can break supported use.
+4. **Repository contract**: changed files violate applicable `AGENTS.md` or explicit task scope.
+5. **Test adequacy**: behavior changed without evidence for the meaningful success, failure, or boundary cases.
 
-- 代码风格（缩进、命名、分号）——模型自己能判断
-- 通用最佳实践（DRY、SOLID）——模型已知
-- 性能优化建议（除非是明显的 N+1 查询或 O(n²) 嵌套循环）
-- 类型标注缺失（TypeScript/Python typing）
+Only report a finding when all are present:
 
-## 动态验证
+- a precise changed `file:line`;
+- the triggering input, state, or execution path;
+- the violated contract or invariant;
+- the concrete user, security, data, or operational impact.
 
-静态审查完成后，查找并调用 test skill 运行相关测试：
+Read enough surrounding code to prove reachability. Do not report style preferences, generic best practices, speculative risks, or scanner keywords without a causal path. If a material concern cannot be resolved from available evidence, list it under `信息缺口` rather than converting it into a finding.
 
-1. 检查仓库中是否存在 test skill（在 skill 列表中搜索 `test` 或 `test-*`）
-2. 如果存在，调用 test skill 运行与本次变更相关的测试
-3. 如果不存在，在输出中注明"未找到 test skill，跳过动态验证"
-4. 不要在 review skill 内部实现测试逻辑——test skill 是独立职责
+## 4. Delegate Dynamic Validation
 
-## 执行流程
+After static review, use an available `test` or `test-*` skill to run the narrowest relevant validation for the frozen scope. Pass it the changed behavior, affected paths, and any risk hypotheses; do not reimplement a generic test workflow here.
 
+- Never claim tests passed unless a command actually ran and its exit status/output support that claim.
+- If no test skill is available, record `未验证：未提供 test skill`.
+- If tests cannot run because of environment or dependency limits, record the exact blocker.
+- Treat missing or blocked dynamic validation as `信息不足` unless the user explicitly requested static review only.
+
+## 5. Decide The Gate
+
+Use exactly one verdict:
+
+- `需要修复`: at least one blocking finding, a relevant test failed, or a required scanner failed.
+- `信息不足`: no blocking finding is proven, but scope collection, required context, scanner execution, or dynamic validation is incomplete.
+- `可以提交`: no blocking finding remains and required scanners plus relevant dynamic validation completed successfully.
+- `无变更`: the frozen scope contains no changes.
+
+Classify findings:
+
+- **阻塞**: can produce incorrect behavior, security compromise, data corruption/loss, incompatible public behavior, failed required validation, or violation of a hard repository constraint.
+- **警告**: proven non-blocking regression or operability/test-coverage risk.
+- **建议**: omit by default; include only when the user explicitly asks for improvement ideas.
+
+## Output Contract
+
+Lead with findings ordered by severity, then evidence. Omit empty finding sections.
+
+```markdown
+## 审查结论
+
+**判定**: 需要修复 | 信息不足 | 可以提交 | 无变更
+**范围**: [reviewed target and changed paths]
+
+### 阻塞项
+- `path/to/file:line` — [problem]
+  - 触发路径: [input/state/call path]
+  - 影响: [concrete consequence]
+
+### 警告项
+- `path/to/file:line` — [problem and consequence]
+
+### 动态验证
+- `[command or delegated test]` — 通过 | 失败 | 未验证
+
+### 信息缺口
+- [missing evidence and why it affects confidence]
 ```
-/review 触发
-  ├── 获取 diff: git diff origin/main...HEAD
-  ├── 静态审查
-  │   ├── 安全审查（阻塞项）
-  │   ├── 逻辑审查（阻塞/警告）
-  │   └── 仓库合规审查（警告）
-  ├── 动态验证
-  │   └── 调用 test skill
-  └── 输出结构化结论
-```
 
-## 审查原则
-
-- 安全审查优先于风格审查。先完成安全审查，再做其他检查
-- 只报告确定的问题，不猜测。不确定时标注"需人工确认"
-- 一个问题只报告一次，不重复
-- 输出中不包含修复建议——review 只负责发现问题，不负责修复方案
-- 如果 diff 为空，输出"无变更，跳过审查"
+If there are no findings, state `未发现可报告问题`; never replace that sentence with a guarantee of correctness. Keep remediation out of the report unless the user requests it.
