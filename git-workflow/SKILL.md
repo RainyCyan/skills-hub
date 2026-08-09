@@ -16,11 +16,17 @@ description: 管理 git 仓库的并发安全与工作区隔离。触发场景�
 
 ### 创建 worktree
 
-Always create a worktree from origin/main before starting any task:
+Always create a worktree from origin/main before starting any task. Use `--no-track` so the new branch does NOT inherit `origin/main` as upstream:
 
 ```bash
 git fetch origin --prune
-git worktree add ../<task-name> -b <branch-name> origin/main
+git worktree add ../<dir-name> -b <branch-name> --no-track origin/main
+```
+
+为什么 `--no-track`：不加时 `git worktree add ... origin/main` 会把新分支的 upstream 设成 `origin/main`（`branch.<name>.merge = refs/heads/main`）。后果：`git status` 的 ahead/behind 相对 main 计算而非本分支远端；在工作分支上 `git pull` 会把 **main** 合进来，污染线性历史；首次 `git push` 默认指向 main。首次推送时显式建立本分支的远端跟踪：
+
+```bash
+git push -u origin <branch-name>
 ```
 
 分支命名规范（携带来源和 scope）：
@@ -34,10 +40,14 @@ fix/<topic>
 
 禁止使用 `update`、`fixes`、`wip`、`new-code` 等看不出责任边界的名字。
 
+### 目录名与分支名的确定性映射
+
+`<dir-name>` 与 `<branch-name>` 是两个值，但清理时 `git worktree remove ../<dir-name>` 和 `git branch -d <branch-name>` 要求同时记住二者。固定映射规则：**目录名 = 分支名去掉 `feat/`、`fix/`、`codex/`、`claude/` 等前缀**（如分支 `feat/tdd` → 目录 `tdd`）。不要用带 `/` 的分支名直接作目录名，`../feat/tdd` 会被当成子目录路径而非隔离 worktree。
+
 ### 进入 worktree
 
 ```bash
-cd ../<task-name>
+cd ../<dir-name>
 git status --short --branch   # 必须 clean
 ```
 
@@ -161,6 +171,17 @@ git rebase origin/main
 | 删 worktree | 丢失本地未推送工作 | 通过五条检查 |
 
 Never skip hooks (`--no-verify`, `--no-gpg-sign`). Never force push to main.
+
+## 运行环境前置（sandbox / 只读 .git）
+
+某些运行环境（如 CloudIDE sandbox）会拦截网络访问，并把 `.git` 挂成只读 overlay。凡是含 `git fetch`、`git worktree add`、`git commit`、`git push` 的命令，首次可能失败并报：
+
+```
+SandboxDenied: command was blocked by the sandbox.
+error: cannot open '.git/FETCH_HEAD': Read-only file system
+```
+
+这是环境限制，不是仓库损坏或网络故障——不要据此判定 fetch 失败或 `.git` 损坏。处理方式：关闭 sandbox 后重试同一条命令（在 TRAE CLI 中用 `dangerouslyDisableSandbox: true`）。`.git` 可能只读而 worktree 目录可写，因此编辑文件成功、`git add`/`git commit` 却失败，属正常现象，同样按关闭 sandbox 重试处理。
 
 ## 并行 Agent 规则
 
