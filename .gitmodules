@@ -1,0 +1,6 @@
+[submodule "third/agent-skills"]
+	path = third/agent-skills
+	url = https://github.com/addyosmani/agent-skills.git
+[submodule "third/superpowers"]
+	path = third/superpowers
+	url = https://github.com/obra/superpowers.git
