@@ -1,3 +1,4 @@
+<div align="center">
 # skills-hub
 
 <p align="center">
@@ -11,6 +12,7 @@
   <img alt="Git" src="https://img.shields.io/badge/Git-Worktree%20First-f05032?logo=git&logoColor=white">
 </p>
 
+</div>
 ## 项目定位
 
 `skills-hub` 不是普通知识库。它沉淀的是 Agent 执行任务时会改变行为的规则、技能和脚本：让模型在合适的时机加载合适的约束，并把脆弱流程交给确定性脚本。
