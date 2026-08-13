@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>可编辑简历</title>
+<style>
+  /* ============================================================
+     可编辑双栏简历模板 —— "Aside"
+     - 左侧深色侧栏放联系方式/技能，右侧主栏放经历
+     - 所有正文 contenteditable；工具栏在纸外，打印隐藏
+     - 适合信息密度较高、想突出技能栏的候选人
+     ============================================================ */
+
+  :root {
+    --ink:       #1c1e22;
+    --ink-soft:  #4c525b;
+    --ink-faint: #8b9098;
+    --accent:    #22303a;   /* 侧栏底色 / 主题色 */
+    --accent-2:  #7fd1c1;   /* 侧栏内高亮 */
+    --rule:      #e3e6ea;
+    --page-w:    210mm;
+    --page-h:    297mm;
+    --side-w:    62mm;
+    --font-base: 10.5pt;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: #6b7078;
+    font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC",
+                 "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system,
+                 "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .toolbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; gap: 8px; align-items: center;
+    padding: 10px 16px;
+    background: rgba(26, 28, 32, 0.92);
+    color: #f2f4f6; font-size: 13px;
+    backdrop-filter: blur(6px);
+  }
+  .toolbar button {
+    font: inherit; color: #f2f4f6;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px; padding: 5px 12px; cursor: pointer;
+  }
+  .toolbar button:hover { background: rgba(255,255,255,0.20); }
+  .toolbar .hint { margin-left: auto; color: #b9bec6; font-size: 12px; }
+
+  .page {
+    width: var(--page-w);
+    min-height: var(--page-h);
+    margin: 76px auto 40px;
+    background: #fff;
+    box-shadow: 0 6px 30px rgba(0,0,0,0.28);
+    display: grid;
+    grid-template-columns: var(--side-w) 1fr;
+    font-size: var(--font-base);
+    line-height: 1.5;
+  }
+
+  /* ---------- 左侧栏 ---------- */
+  .side {
+    background: var(--accent);
+    color: #e9edf0;
+    padding: 16mm 8mm;
+  }
+  .side .photo {
+    width: 82px; height: 82px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block; margin: 0 auto 14px;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.08) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="82" height="82"><circle cx="41" cy="41" r="41" fill="%232a3946"/><text x="50%25" y="54%25" font-size="11" fill="%237fd1c1" text-anchor="middle" font-family="sans-serif">照片</text></svg>') center/cover no-repeat;
+  }
+  .side .name {
+    font-size: 17pt; font-weight: 700; text-align: center;
+    letter-spacing: 1px; line-height: 1.15;
+  }
+  .side .headline {
+    text-align: center; color: var(--accent-2);
+    font-size: 9.5pt; font-weight: 600; margin-top: 4px; margin-bottom: 16px;
+  }
+  .side .sec-title {
+    font-size: 9.5pt; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--accent-2);
+    border-bottom: 1px solid rgba(255,255,255,0.18);
+    padding-bottom: 4px; margin: 16px 0 8px;
+  }
+  .side .contact-line {
+    font-size: 9pt; color: #cdd5da; margin-bottom: 5px;
+    word-break: break-all;
+  }
+  .side .contact-line b { color: #fff; font-weight: 600; }
+  .side .skill-line { font-size: 9pt; color: #cdd5da; margin-bottom: 6px; }
+  .side .skill-line b { display: block; color: #fff; font-weight: 600; margin-bottom: 1px; }
+
+  /* ---------- 右主栏 ---------- */
+  .main { padding: 16mm 12mm 16mm 11mm; }
+  .main .summary { color: var(--ink-soft); font-size: 10pt; margin-bottom: 15px; }
+
+  .main section { margin-bottom: 15px; }
+  .main .sec-title {
+    font-size: 11pt; font-weight: 700; color: var(--accent);
+    letter-spacing: 2px; text-transform: uppercase;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 4px; margin-bottom: 9px;
+  }
+  .item { margin-bottom: 11px; page-break-inside: avoid; }
+  .item-row {
+    display: flex; justify-content: space-between;
+    align-items: baseline; gap: 12px;
+  }
+  .item-title { font-weight: 600; font-size: 10.5pt; }
+  .item-org { color: var(--ink-soft); font-weight: 500; }
+  .item-date { color: var(--ink-faint); font-size: 9pt; white-space: nowrap; }
+  .item-sub { color: var(--ink-faint); font-size: 9pt; margin-top: 1px; }
+
+  ul.bullets { margin: 5px 0 0; padding-left: 0; list-style: none; }
+  ul.bullets li {
+    position: relative; padding-left: 15px; margin-bottom: 3px;
+    color: var(--ink-soft); font-size: 9.8pt;
+  }
+  ul.bullets li::before {
+    content: ""; position: absolute; left: 2px; top: 8px;
+    width: 5px; height: 5px;
+    border: 1.5px solid var(--accent); border-radius: 50%;
+  }
+
+  [contenteditable="true"]:hover { outline: 1px dashed rgba(127, 209, 193, 0.5); outline-offset: 2px; }
+  [contenteditable="true"]:focus { outline: 1px solid var(--accent-2); outline-offset: 2px; }
+
+  @page { size: A4; margin: 0; }
+  @media print {
+    html, body { background: #fff; }
+    .toolbar { display: none !important; }
+    .page { margin: 0; box-shadow: none; width: auto; min-height: auto; }
+    .side { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    [contenteditable="true"]:hover, [contenteditable="true"]:focus { outline: none !important; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar" contenteditable="false">
+    <button onclick="window.print()">打印 / 导出 PDF</button>
+    <button onclick="document.execCommand('bold')">加粗选中文字</button>
+    <button onclick="setAccent()">换主题色</button>
+    <button onclick="swapPhoto()">替换照片</button>
+    <span class="hint">直接点击任意文字即可修改；导出 PDF 时勾选"背景图形"以保留侧栏底色</span>
+    <input type="file" id="photoInput" accept="image/*" hidden onchange="loadPhoto(event)" />
+  </div>
+
+  <div class="page">
+
+    <!-- 左侧栏 -->
+    <aside class="side">
+      <img class="photo" id="photo" alt="照片" src="" />
+      <div class="name" contenteditable="true">张三</div>
+      <div class="headline" contenteditable="true">后端工程师 · 分布式系统</div>
+
+      <div class="sec-title" contenteditable="true">联系方式</div>
+      <div class="contact-line" contenteditable="true"><b>邮箱</b> you@example.com</div>
+      <div class="contact-line" contenteditable="true"><b>电话</b> 138-0000-0000</div>
+      <div class="contact-line" contenteditable="true"><b>城市</b> 上海</div>
+      <div class="contact-line" contenteditable="true"><b>GitHub</b> github.com/yourname</div>
+
+      <div class="sec-title" contenteditable="true">技能</div>
+      <div class="skill-line" contenteditable="true"><b>语言</b>Go, Java, Python, SQL</div>
+      <div class="skill-line" contenteditable="true"><b>存储与中间件</b>MySQL, Redis, Kafka, ES</div>
+      <div class="skill-line" contenteditable="true"><b>基础设施</b>Kubernetes, Docker, gRPC</div>
+
+      <div class="sec-title" contenteditable="true">其他</div>
+      <div class="skill-line" contenteditable="true"><b>语言</b>英语 CET-6，可作为工作语言</div>
+      <div class="skill-line" contenteditable="true"><b>开源</b>xxx 项目连接池补丁（已合入）</div>
+    </aside>
+
+    <!-- 右主栏 -->
+    <div class="main">
+      <p class="summary" contenteditable="true">
+        3 年后端经验，主导过日均千万级请求服务的稳定性建设。熟悉分布式缓存、消息队列与服务治理，关注长期可维护性与成本。
+      </p>
+
+      <section>
+        <div class="sec-title" contenteditable="true">工作经历</div>
+        <div class="item">
+          <div class="item-row">
+            <div class="item-title" contenteditable="true">后端工程师 · <span class="item-org">某科技公司</span></div>
+            <div class="item-date" contenteditable="true">2022.07 – 至今</div>
+          </div>
+          <div class="item-sub" contenteditable="true">上海</div>
+          <ul class="bullets" contenteditable="true">
+            <li>重构订单核心链路，P99 延迟从 420ms 降至 90ms，支撑大促日均 2000 万单</li>
+            <li>设计 Redis + 本地缓存两级方案，缓存命中率 96%，DB QPS 下降 70%</li>
+            <li>推动服务拆分与限流降级，线上重大故障从季度 3 次降至 0 次</li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="sec-title" contenteditable="true">项目经历</div>
+        <div class="item">
+          <div class="item-row">
+            <div class="item-title" contenteditable="true">分布式任务调度平台 · <span class="item-org">核心开发</span></div>
+            <div class="item-date" contenteditable="true">2023.03 – 2023.09</div>
+          </div>
+          <ul class="bullets" contenteditable="true">
+            <li>基于 Raft 实现调度元数据一致性，支持 500+ 节点无单点</li>
+            <li>任务吞吐从 1k/s 提升到 12k/s，故障切换时间 &lt; 2s</li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="sec-title" contenteditable="true">教育背景</div>
+        <div class="item">
+          <div class="item-row">
+            <div class="item-title" contenteditable="true">某某大学 · <span class="item-org">计算机科学与技术 硕士</span></div>
+            <div class="item-date" contenteditable="true">2019.09 – 2022.06</div>
+          </div>
+          <div class="item-sub" contenteditable="true">GPA 3.8/4.0；操作系统课程助教；分布式系统方向</div>
+        </div>
+      </section>
+    </div>
+
+  </div>
+
+<script>
+  var ACCENTS = [
+    ['#22303a', '#7fd1c1'], ['#2b2f42', '#a5b4fc'], ['#3a2b2b', '#e0a3a3'],
+    ['#1f3a2e', '#8fd6ad'], ['#2e2a3a', '#c3a3e0'], ['#263238', '#80cbc4']
+  ];
+  var accentIdx = 0;
+  function setAccent() {
+    accentIdx = (accentIdx + 1) % ACCENTS.length;
+    document.documentElement.style.setProperty('--accent', ACCENTS[accentIdx][0]);
+    document.documentElement.style.setProperty('--accent-2', ACCENTS[accentIdx][1]);
+  }
+  function swapPhoto() { document.getElementById('photoInput').click(); }
+  function loadPhoto(e) {
+    var f = e.target.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function (ev) { document.getElementById('photo').src = ev.target.result; };
+    r.readAsDataURL(f);
+  }
+</script>
+</body>
+</html>
