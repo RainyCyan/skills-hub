@@ -1,6 +1,6 @@
 ---
-name: asu
-description: 制作可编辑的中文 HTML 简历并支持打印导出 PDF。触发场景：用户输入"/resume"、要求制作/生成/优化/修改/复刻简历或 CV、根据个人经历排版简历、把简历截图重建为可编辑网页、或需要一份能在浏览器里继续改字改色的简历文件。Create an editable Chinese HTML resume/CV with print-to-PDF; use when the user asks to build, edit, restyle, or clone a resume.
+name: make-resume
+description: 制作可编辑的中文 HTML 简历并支持打印导出 PDF。触发场景：用户输入"/make-resume"、要求制作/生成/优化/修改/复刻简历或 CV、根据个人经历排版简历、把简历截图重建为可编辑网页、或需要一份能在浏览器里继续改字改色的简历文件。Create an editable Chinese HTML resume/CV with print-to-PDF; use when the user asks to build, edit, restyle, or clone a resume.
 ---
 
 # Resume：制作可编辑简历
@@ -31,7 +31,9 @@ description: 制作可编辑的中文 HTML 简历并支持打印导出 PDF。触
 - 页面所有正文必须可选中、可编辑、可复制；工具栏用 `contenteditable="false"` 且 `@media print` 下 `display:none`。
 - 页面里**所有图像**（证件照、公司/学校 logo、图标、品牌横幅）一律内嵌为 dataURL（`FileReader.readAsDataURL`）或内联 `<svg>`，Never 用外链或本地文件路径——导出 PDF 会丢图。需要放大 logo 时按比例控制 `height`、`width:auto`，勿拉伸变形。
 - 主题色收敛到单一 CSS 变量（`--accent`），换色只改这一处，Never 在多处硬编码颜色。
-- 默认 A4（`@page { size: A4; margin: 0 }`），版心边距由模板控制，保持稳定分页。多页时每页各用一个 `.page` 容器（`min-height` 设为页高），条目用 `page-break-inside: avoid` 防止跨页截断，子标题用 `page-break-after: avoid` 避免与正文分离；模板本身是单页，扩成多页只加 `.page` 容器与上述断页规则，不改版心。
+- 分页契约（多页时）：每页一个 `.page` 容器，且**打印态**下每个 `.page` 必须 `width:210mm; min-height:297mm` 并加 `break-inside: avoid-page; page-break-inside: avoid;`，页间用 `.page + .page { page-break-before: always; }`。Never 在打印态把 `.page` 降为 `min-height:auto`——页高不确定时浏览器会忽略断页规则或产生空白页。条目用 `page-break-inside: avoid` 防跨页截断，子标题用 `page-break-after: avoid` 防与正文分离。停止条件：单个 `.page` 的实际内容超过 297mm 时，先减内容/密度，Never 靠断页规则硬撑。
+- 导出 PDF 时在 `@media print` 内用 `* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }` 强制保留主题色块、渐变、侧栏底色与 SVG，不依赖打印对话框的"背景图形"勾选。
+- 内容溢出目标页数时，按此顺序恢复，Never 用 `overflow:hidden` 裁掉内容：① 先删重复、空泛、失衡的文案；② 确认目标页数与逻辑分页点（如"第一页在某段经历后结束"）；③ 收紧 padding、`section`/`.item`/bullet 间距；④ 最后再降 `--font-base`，且设可读下限（正文不低于约 9pt）；⑤ 改完重新核验每一页。`slate` 的密度旋钮是 `--pad` 和 `--font-base`；`aside` 无 `--pad`，改左右栏 `.side`/`.main` 的 padding。
 - 用户未提供真实照片时保留占位图，并提醒替换；Never 把用户真实个人信息写回 `assets/` 里的模板或 JSON。
 
 ## 产出后必检

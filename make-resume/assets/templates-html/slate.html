@@ -151,7 +151,7 @@
   }
   .item-title { font-weight: 600; font-size: 10.5pt; }
   .item-org { color: var(--ink-soft); font-weight: 500; }
-  .item-date { color: var(--ink-faint); font-size: 9pt; white-space: nowrap; }
+  .item-date { color: var(--ink-faint); font-size: 9pt; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .item-sub { color: var(--ink-faint); font-size: 9pt; margin-top: 1px; }
 
   ul.bullets {
@@ -198,12 +198,21 @@
   @page { size: A4; margin: 0; }
   @media print {
     html, body { background: #fff; }
+    /* 强制导出 PDF 时保留主题色块、渐变、SVG 底色，不依赖打印对话框勾选项 */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     .toolbar { display: none !important; }
+    /* 每个 .page 恢复固定 A4 盒模型：只有页高确定，断页规则才可靠 */
     .page {
+      width: 210mm;
+      min-height: 297mm;
       margin: 0;
       box-shadow: none;
-      width: auto;
-      min-height: auto;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+    }
+    .page + .page {
+      break-before: page;
+      page-break-before: always;
     }
     [contenteditable="true"]:hover,
     [contenteditable="true"]:focus { outline: none !important; }
@@ -267,8 +276,23 @@
           <div class="item-date" contenteditable="true">2023.03 – 2023.09</div>
         </div>
         <ul class="bullets" contenteditable="true">
-          <li>基于 Raft 实现调度元数据一致性，支持 500+ 节点无单点</li>
-          <li>任务吞吐从 1k/s 提升到 12k/s，故障切换时间 &lt; 2s</li>
+          <li>负责调度核心链路设计与实现，基于 Raft 保证调度元数据一致性，支撑 500+ 节点稳定协同，消除单点风险</li>
+          <li>围绕任务分发与执行链路优化并发处理能力，任务吞吐从 1k/s 提升至 12k/s，满足高并发调度场景</li>
+          <li>完善节点故障检测与切换机制，将故障切换时间控制在 2s 以内，提升平台连续服务能力</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title" contenteditable="true">竞赛奖项</div>
+      <div class="item">
+        <div class="item-row">
+          <div class="item-title" contenteditable="true">某某程序设计竞赛 · <span class="item-org">国家级一等奖</span></div>
+          <div class="item-date" contenteditable="true">2021.10</div>
+        </div>
+        <ul class="bullets" contenteditable="true">
+          <li>在程序设计竞赛中获得国家级一等奖，体现扎实的算法基础、问题分析能力与代码实现能力</li>
+          <li>具备从问题建模、复杂度分析到代码实现的完整解题能力，能够将算法思路转化为可运行方案</li>
         </ul>
       </div>
     </section>
