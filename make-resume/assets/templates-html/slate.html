@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>可编辑简历</title>
+<style>
+  /* ============================================================
+     可编辑单页简历模板 —— "Slate"
+     - 所有正文均可在浏览器中直接点选修改（contenteditable）
+     - 顶部工具栏定位在页面之外，打印时自动隐藏
+     - A4 版心，稳定分页，中文字体层级清晰
+     ============================================================ */
+
+  :root {
+    --ink:        #1a1c20;   /* 主文字 */
+    --ink-soft:   #4a4f57;   /* 次要文字 */
+    --ink-faint:  #8b9098;   /* 辅助/时间 */
+    --accent:     #2f5d62;   /* 主题强调色，改这一处即可换主色 */
+    --rule:       #e3e6ea;   /* 分隔线 */
+    --page-w:     210mm;
+    --page-h:     297mm;
+    --pad:        18mm;
+    --font-base:  10.5pt;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #6b7078;
+    font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC",
+                 "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system,
+                 "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 工具栏：屏幕上悬浮，打印时消失 ---------- */
+  .toolbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 16px;
+    background: rgba(26, 28, 32, 0.92);
+    color: #f2f4f6;
+    font-size: 13px;
+    backdrop-filter: blur(6px);
+  }
+  .toolbar button {
+    font: inherit;
+    color: #f2f4f6;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+  }
+  .toolbar button:hover { background: rgba(255,255,255,0.20); }
+  .toolbar .hint { margin-left: auto; color: #b9bec6; font-size: 12px; }
+
+  /* ---------- 纸张 ---------- */
+  .page {
+    width: var(--page-w);
+    min-height: var(--page-h);
+    margin: 76px auto 40px;
+    padding: var(--pad);
+    background: #fff;
+    box-shadow: 0 6px 30px rgba(0,0,0,0.28);
+    line-height: 1.5;
+    font-size: var(--font-base);
+  }
+
+  /* ---------- 抬头 ---------- */
+  .head {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+  }
+  .head .photo {
+    flex: 0 0 auto;
+    width: 74px; height: 92px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: #eef0f2 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="74" height="92"><rect width="100%25" height="100%25" fill="%23eef0f2"/><text x="50%25" y="52%25" font-size="10" fill="%238b9098" text-anchor="middle" font-family="sans-serif">照片</text></svg>') center/cover no-repeat;
+  }
+  .head .who { flex: 1 1 auto; }
+  .name {
+    font-size: 22pt;
+    font-weight: 700;
+    letter-spacing: 1px;
+    line-height: 1.1;
+  }
+  .headline {
+    color: var(--accent);
+    font-size: 11pt;
+    font-weight: 600;
+    margin-top: 3px;
+  }
+  .contact {
+    margin-top: 8px;
+    font-size: 9pt;
+    color: var(--ink-soft);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+  }
+  .contact span::before {
+    content: "";
+    display: inline-block;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* ---------- 摘要 ---------- */
+  .summary {
+    color: var(--ink-soft);
+    font-size: 10pt;
+    margin-bottom: 16px;
+  }
+
+  /* ---------- 区块 ---------- */
+  section { margin-bottom: 15px; }
+  .sec-title {
+    font-size: 11pt;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 4px;
+    margin-bottom: 9px;
+  }
+
+  .item { margin-bottom: 11px; page-break-inside: avoid; }
+  .item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .item-title { font-weight: 600; font-size: 10.5pt; }
+  .item-org { color: var(--ink-soft); font-weight: 500; }
+  .item-date { color: var(--ink-faint); font-size: 9pt; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .item-sub { color: var(--ink-faint); font-size: 9pt; margin-top: 1px; }
+
+  ul.bullets {
+    margin: 5px 0 0;
+    padding-left: 0;
+    list-style: none;
+  }
+  ul.bullets li {
+    position: relative;
+    padding-left: 15px;
+    margin-bottom: 3px;
+    color: var(--ink-soft);
+    font-size: 9.8pt;
+  }
+  ul.bullets li::before {
+    content: "";
+    position: absolute;
+    left: 2px; top: 8px;
+    width: 5px; height: 5px;
+    border: 1.5px solid var(--accent);
+    border-radius: 50%;
+  }
+
+  /* ---------- 技能 / 附加信息（键值行） ---------- */
+  .kv { display: flex; gap: 10px; margin-bottom: 4px; font-size: 9.8pt; }
+  .kv .k {
+    flex: 0 0 96px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .kv .v { flex: 1 1 auto; color: var(--ink-soft); }
+
+  /* ---------- 编辑态可视辅助（仅屏幕） ---------- */
+  [contenteditable="true"]:hover {
+    outline: 1px dashed rgba(47, 93, 98, 0.35);
+    outline-offset: 2px;
+  }
+  [contenteditable="true"]:focus {
+    outline: 1px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* ---------- 打印 ---------- */
+  @page { size: A4; margin: 0; }
+  @media print {
+    html, body { background: #fff; }
+    /* 强制导出 PDF 时保留主题色块、渐变、SVG 底色，不依赖打印对话框勾选项 */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .toolbar { display: none !important; }
+    /* 每个 .page 恢复固定 A4 盒模型：只有页高确定，断页规则才可靠 */
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0;
+      box-shadow: none;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+    }
+    .page + .page {
+      break-before: page;
+      page-break-before: always;
+    }
+    [contenteditable="true"]:hover,
+    [contenteditable="true"]:focus { outline: none !important; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- 工具栏：定位在纸张之外，打印时隐藏 -->
+  <div class="toolbar" contenteditable="false">
+    <button onclick="window.print()">打印 / 导出 PDF</button>
+    <button onclick="document.execCommand('bold')">加粗选中文字</button>
+    <button onclick="setAccent()">换主题色</button>
+    <button onclick="swapPhoto()">替换照片</button>
+    <span class="hint">直接点击任意文字即可修改；Ctrl/Cmd+P 导出 PDF（边距选"无"）</span>
+    <input type="file" id="photoInput" accept="image/*" hidden onchange="loadPhoto(event)" />
+  </div>
+
+  <!-- ============ 纸张开始 ============ -->
+  <div class="page">
+
+    <header class="head">
+      <img class="photo" id="photo" alt="照片" src="" />
+      <div class="who">
+        <div class="name" contenteditable="true">张三</div>
+        <div class="headline" contenteditable="true">后端工程师 · 分布式系统</div>
+        <div class="contact" contenteditable="true">
+          <span>you@example.com</span>
+          <span>138-0000-0000</span>
+          <span>上海</span>
+          <span>github.com/yourname</span>
+        </div>
+      </div>
+    </header>
+
+    <p class="summary" contenteditable="true">
+      3 年后端经验，主导过日均千万级请求服务的稳定性建设。熟悉分布式缓存、消息队列与服务治理，关注长期可维护性与成本。
+    </p>
+
+    <section>
+      <div class="sec-title" contenteditable="true">工作经历</div>
+      <div class="item">
+        <div class="item-row">
+          <div class="item-title" contenteditable="true">后端工程师 · <span class="item-org">某科技公司</span></div>
+          <div class="item-date" contenteditable="true">2022.07 – 至今</div>
+        </div>
+        <div class="item-sub" contenteditable="true">上海</div>
+        <ul class="bullets" contenteditable="true">
+          <li>重构订单核心链路，P99 延迟从 420ms 降至 90ms，支撑大促日均 2000 万单</li>
+          <li>设计 Redis + 本地缓存两级方案，缓存命中率 96%，DB QPS 下降 70%</li>
+          <li>推动服务拆分与限流降级，线上重大故障从季度 3 次降至 0 次</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title" contenteditable="true">项目经历</div>
+      <div class="item">
+        <div class="item-row">
+          <div class="item-title" contenteditable="true">分布式任务调度平台 · <span class="item-org">核心开发</span></div>
+          <div class="item-date" contenteditable="true">2023.03 – 2023.09</div>
+        </div>
+        <ul class="bullets" contenteditable="true">
+          <li>负责调度核心链路设计与实现，基于 Raft 保证调度元数据一致性，支撑 500+ 节点稳定协同，消除单点风险</li>
+          <li>围绕任务分发与执行链路优化并发处理能力，任务吞吐从 1k/s 提升至 12k/s，满足高并发调度场景</li>
+          <li>完善节点故障检测与切换机制，将故障切换时间控制在 2s 以内，提升平台连续服务能力</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title" contenteditable="true">竞赛奖项</div>
+      <div class="item">
+        <div class="item-row">
+          <div class="item-title" contenteditable="true">某某程序设计竞赛 · <span class="item-org">国家级一等奖</span></div>
+          <div class="item-date" contenteditable="true">2021.10</div>
+        </div>
+        <ul class="bullets" contenteditable="true">
+          <li>在程序设计竞赛中获得国家级一等奖，体现扎实的算法基础、问题分析能力与代码实现能力</li>
+          <li>具备从问题建模、复杂度分析到代码实现的完整解题能力，能够将算法思路转化为可运行方案</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title" contenteditable="true">教育背景</div>
+      <div class="item">
+        <div class="item-row">
+          <div class="item-title" contenteditable="true">某某大学 · <span class="item-org">计算机科学与技术 硕士</span></div>
+          <div class="item-date" contenteditable="true">2019.09 – 2022.06</div>
+        </div>
+        <div class="item-sub" contenteditable="true">GPA 3.8/4.0；操作系统课程助教；分布式系统方向</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title" contenteditable="true">技能</div>
+      <div class="kv"><div class="k" contenteditable="true">语言</div><div class="v" contenteditable="true">Go, Java, Python, SQL</div></div>
+      <div class="kv"><div class="k" contenteditable="true">存储与中间件</div><div class="v" contenteditable="true">MySQL, Redis, Kafka, Elasticsearch</div></div>
+      <div class="kv"><div class="k" contenteditable="true">基础设施</div><div class="v" contenteditable="true">Kubernetes, Docker, Prometheus, gRPC</div></div>
+    </section>
+
+    <section>
+      <div class="sec-title" contenteditable="true">其他</div>
+      <div class="kv"><div class="k" contenteditable="true">开源</div><div class="v" contenteditable="true">为 xxx 项目贡献连接池复用补丁（已合入）</div></div>
+      <div class="kv"><div class="k" contenteditable="true">语言</div><div class="v" contenteditable="true">英语 CET-6，可作为工作语言</div></div>
+    </section>
+
+  </div>
+  <!-- ============ 纸张结束 ============ -->
+
+<script>
+  // 换主题色：在几个协调的深色之间循环，只改 --accent 一处
+  var ACCENTS = ['#2f5d62', '#37474f', '#5b4b8a', '#8a3b3b', '#1f6f54', '#334e68'];
+  var accentIdx = 0;
+  function setAccent() {
+    accentIdx = (accentIdx + 1) % ACCENTS.length;
+    document.documentElement.style.setProperty('--accent', ACCENTS[accentIdx]);
+  }
+  // 替换照片：本地选图，转 dataURL 内嵌，导出 PDF 不丢
+  function swapPhoto() { document.getElementById('photoInput').click(); }
+  function loadPhoto(e) {
+    var f = e.target.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function (ev) { document.getElementById('photo').src = ev.target.result; };
+    r.readAsDataURL(f);
+  }
+</script>
+</body>
+</html>

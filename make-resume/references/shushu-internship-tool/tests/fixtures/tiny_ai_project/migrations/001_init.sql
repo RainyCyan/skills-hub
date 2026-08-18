@@ -1,0 +1,4 @@
+CREATE TABLE tickets (
+  id INTEGER PRIMARY KEY,
+  status TEXT NOT NULL
+);
