@@ -4,3 +4,12 @@
 [submodule "third/superpowers"]
 	path = third/superpowers
 	url = https://github.com/obra/superpowers.git
+[submodule "review/references/plan-review/blueprint"]
+	path = review/references/plan-review/blueprint
+	url = git@github.com:owainlewis/blueprint.git
+[submodule "review/references/plan-review/planloop"]
+	path = review/references/plan-review/planloop
+	url = https://github.com/fbmoulin/planloop
+[submodule "review/references/plan-review/plan-critique-skills"]
+	path = review/references/plan-review/plan-critique-skills
+	url = git@github.com:serbanghita/plan-critique-skills.git
