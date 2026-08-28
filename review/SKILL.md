@@ -1,11 +1,20 @@
 ---
 name: review
-description: 编排基于变更证据的代码审查质量门，检查正确性、安全性、回归风险和仓库约束，并委托可用的 test skill 做动态验证。用于用户请求 /review、review diff/PR/commit、提交或合入前检查、代码质量门、安全审查，或询问变更是否可提交/合入时；不用于直接修复代码。
+description: 编排基于证据的只读评审质量门，覆盖两类对象——已实现的代码变更，和已成形但未实现的方案。代码路径检查正确性、安全性、回归风险和仓库约束，并委托可用的 test skill 做动态验证；方案路径检查问题有效性、前提正确性、机制可行性、更优替代与长期成本。用于用户请求 /review、review diff/PR/commit、提交或合入前检查、代码质量门、安全审查，或方案评审 / 设计评审 / RFC / ADR / 技术方案是否可行 / 设计文档 review / 架构评审（针对已给出具体方案但尚未实现时）；不用于直接修复代码，也不用于替用户做方案决策。方案尚未成形、意图未定时改用 grill。
 ---
 
 # Review
 
 将本 skill 作为只读质量门编排器：确定范围、收集证据、运行廉价扫描、审查行为变化、委托动态验证并给出判定。Never modify reviewed files or implement fixes unless the user separately asks for remediation.
+
+## 0. Classify Review Type
+
+先判定评审对象，再走对应闭环：
+
+- **代码变更**（diff / commit / PR / staged / worktree / 具体文件路径）：执行下面第 1–5 步。
+- **已成形方案**（落盘的设计文档 / RFC / ADR / plan.md，或同一对话中已给出的具体方案输出）：加载 `references/design_review.md` 并按其闭环执行，跳过第 1–5 步。
+- 判据是"是否已存在一个具体成形的方案或已实现的变更"。若方案尚未成形、意图未定，这不是评审任务——改用 `grill`，不要在此擅自补全需求。
+- 两种对象无法区分时，先问一句确认，不要默认当代码评审。
 
 ## 1. Freeze The Scope
 
